@@ -96,17 +96,17 @@ public class PARDataLinkLayer extends DataLinkLayer {
     	if (!waiting){
 
         /* if no frame sent recently, send current frame as usual */
-        if (sentFrameBuffer.size() == 0){
-        return super.sendNextFrame();
-        }
-        else{
-        return sentFrameBuffer;
-        }
+            if (sentFrameBuffer.size() == 0){
+                return super.sendNextFrame();
+            }
+            else {
+            return sentFrameBuffer;
+            }
     	}
-    	else{
-    	return null;
+    	else {
+    	   return null;
     	}
-    	} // sendNextFrame ()
+    } // sendNextFrame ()
 	// =========================================================================
     
 	
@@ -305,10 +305,11 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         /* initialize ackStatus to contain ackTag */
         if (ackStatus.size() == 0){
-        ackStatus.add(ackTag)
+        ackStatus.add(ackTag);
         }
 
         /* create frame incorporating ackTag, send it */
+        Queue<Byte> ackFrame= new LinkedList<Byte>();
         ackFrame = createFrame(ackStatus);
         transmit(ackFrame);
         }
@@ -338,6 +339,9 @@ public class PARDataLinkLayer extends DataLinkLayer {
     } // checkTimeout ()
     // =========================================================================
 
+    protected void checkTimeout () {
+        //do nothing - used to ensure PAR is a child class
+    }
 
 
     // =========================================================================
@@ -406,11 +410,11 @@ public class PARDataLinkLayer extends DataLinkLayer {
     protected Queue<Byte> sentFrameBuffer = new LinkedList<Byte>();
 
     /* record time of last time frame was sent */
-    protected long lastFrameTime = 0.0;
+    protected long lastFrameTime = 0L;
 
     protected Boolean receiver = false;
 
-    protected byte ackTag = (byte)"!";
+    protected byte ackTag = (byte)'!';
 
     protected Queue<Byte> ackStatus = new LinkedList<Byte>();
 	
