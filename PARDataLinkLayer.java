@@ -32,33 +32,33 @@ public class PARDataLinkLayer extends DataLinkLayer {
      * @return A complete frame.
      */
     
-	protected Queue<Byte> createFrame (Queue<Byte> data) {
+    protected Queue<Byte> createFrame (Queue<Byte> data) {
 
-    	// ***THINGS TO ADD*** 1) frame number 2) whether frame is ack
+        // ***THINGS TO ADD*** 1) frame number 2) whether frame is ack
 
-	// Calculate the parity.
-	byte parity = calculateParity(data);
-	
-	// Begin with the start tag
-	Queue<Byte> framingData = new LinkedList<Byte>();
-	framingData.add(startTag);
+    // Calculate the parity.
+    byte parity = calculateParity(data);
+    
+    // Begin with the start tag
+    Queue<Byte> framingData = new LinkedList<Byte>();
+    framingData.add(startTag);
 
-    	/* add frame number */
-    	framingData.add((byte)frameNumber);
+        /* add frame number */
+        framingData.add((byte)frameNumber);
 
-	// Add each byte of original data.
-    	int index = 0;
+    // Add each byte of original data.
+        int index = 0;
         for (byte currentByte : data) {
 
-	    // If the current data byte is itself a metadata tag, then precede
-	    // it with an escape tag.
-	    if ((currentByte == startTag) ||
-		(currentByte == stopTag) ||
-		(currentByte == escapeTag)) {
+        // If the current data byte is itself a metadata tag, then precede
+        // it with an escape tag.
+        if ((currentByte == startTag) ||
+        (currentByte == stopTag) ||
+        (currentByte == escapeTag)) {
 
-		framingData.add(escapeTag);
+        framingData.add(escapeTag);
 
-	    }
+        }
 
         // if sender's first data byte is an ack tag, precede it with an escape tag
         if (!receiver && index == 0 && currentByte == ackTag){
@@ -67,33 +67,33 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         index += 1;
 
-	    // Add the data byte itself.
-	    framingData.add(currentByte);
-	}
+        // Add the data byte itself.
+        framingData.add(currentByte);
+    }
 
-	// Add the parity byte.
-	framingData.add(parity);
-	
-	// End with a stop tag.
-	framingData.add(stopTag);
+    // Add the parity byte.
+    framingData.add(parity);
+    
+    // End with a stop tag.
+    framingData.add(stopTag);
 
-	return framingData;
-	
-    	} // createFrame ()
-    	// =========================================================================
+    return framingData;
+    
+        } // createFrame ()
+        // =========================================================================
 
-	
-	
-	// =========================================================================
+    
+    
+    // =========================================================================
     /**
      * After sending a frame, set GLOBAL waiting variable to true.
      * Return null whenever the host is waiting for an acknowledgment. 
      */
 
-    	protected Queue<Byte> sendNextFrame () {
+        protected Queue<Byte> sendNextFrame () {
 
-    	/* check if we are waiting for an acknowledgment */
-    	if (!waiting){
+        /* check if we are waiting for an acknowledgment */
+        if (!waiting){
 
         /* if no frame sent recently, send current frame as usual */
             if (sentFrameBuffer.size() == 0){
@@ -102,16 +102,16 @@ public class PARDataLinkLayer extends DataLinkLayer {
             else {
             return sentFrameBuffer;
             }
-    	}
-    	else {
-    	   return null;
-    	}
+        }
+        else {
+           return null;
+        }
     } // sendNextFrame ()
-	// =========================================================================
+    // =========================================================================
     
-	
-	
-	
+    
+    
+    
      // =========================================================================
     /**
      * After sending a frame, do any bookkeeping (e.g., buffer the frame in case
@@ -133,8 +133,8 @@ public class PARDataLinkLayer extends DataLinkLayer {
     } // finishFrameSend ()
     // =========================================================================
 
-	
-	
+    
+    
   // =========================================================================
     /**
      * Determine whether the received, buffered data constitutes a complete
@@ -148,74 +148,74 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
     protected Queue<Byte> processFrame () {
 
-	// Search for a start tag.  Discard anything prior to it.
-	boolean        startTagFound = false;
-	Iterator<Byte>             i = receiveBuffer.iterator();
-	while (!startTagFound && i.hasNext()) {
-	    byte current = i.next();
-	    if (current != startTag) {
-		i.remove();
-	    } else {
-		startTagFound = true;
-	    }
-	}
+    // Search for a start tag.  Discard anything prior to it.
+    boolean        startTagFound = false;
+    Iterator<Byte>             i = receiveBuffer.iterator();
+    while (!startTagFound && i.hasNext()) {
+        byte current = i.next();
+        if (current != startTag) {
+        i.remove();
+        } else {
+        startTagFound = true;
+        }
+    }
 
-	// If there is no start tag, then there is no frame.
-	if (!startTagFound) {
-	    return null;
-	}
-	
-	// Try to extract data while waiting for an unescaped stop tag.
-    	int                       index = 1;
-	LinkedList<Byte> extractedBytes = new LinkedList<Byte>();
-	boolean            stopTagFound = false;
-    	boolean            startTagFound = true;
-	while (!stopTagFound && i.hasNext()) {
+    // If there is no start tag, then there is no frame.
+    if (!startTagFound) {
+        return null;
+    }
+    
+    // Try to extract data while waiting for an unescaped stop tag.
+        int                       index = 1;
+    LinkedList<Byte> extractedBytes = new LinkedList<Byte>();
+    boolean            stopTagFound = false;
+    startTagFound = false;
+    while (!stopTagFound && i.hasNext()) {
 
-	    // Grab the next byte.  If it is...
-	    //   (a) An escape tag: Skip over it and grab what follows as
-	    //                      literal data.
-	    //   (b) A stop tag:    Remove all processed bytes from the buffer and
-	    //                      end extraction.
-	    //   (c) A start tag:   All that precedes is damaged, so remove it
-	    //                      from the buffer and restart extraction.
-	    //   (d) Otherwise:     Take it as literal data.
-	    byte current = i.next();
+        // Grab the next byte.  If it is...
+        //   (a) An escape tag: Skip over it and grab what follows as
+        //                      literal data.
+        //   (b) A stop tag:    Remove all processed bytes from the buffer and
+        //                      end extraction.
+        //   (c) A start tag:   All that precedes is damaged, so remove it
+        //                      from the buffer and restart extraction.
+        //   (d) Otherwise:     Take it as literal data.
+        byte current = i.next();
             index += 1;
-	    if (current == escapeTag) {
-		if (i.hasNext()) {
-		    current = i.next();
+        if (current == escapeTag) {
+        if (i.hasNext()) {
+            current = i.next();
                     index += 1;
-		    extractedBytes.add(current);
-		} else {
-		    // An escape was the last byte available, so this is not a
-		    // complete frame.
-		    return null;
-		}
-	    } else if (current == stopTag) {
-		cleanBufferUpTo(index);
-		stopTagFound = true;
-	    } else if (current == startTag) {
-		cleanBufferUpTo(index - 1);
+            extractedBytes.add(current);
+        } else {
+            // An escape was the last byte available, so this is not a
+            // complete frame.
+            return null;
+        }
+        } else if (current == stopTag) {
+        cleanBufferUpTo(index);
+        stopTagFound = true;
+        } else if (current == startTag) {
+        cleanBufferUpTo(index - 1);
                 index = 1;
                 startTagFound = true;
-		extractedBytes = new LinkedList<Byte>();
+        extractedBytes = new LinkedList<Byte>();
         }
         //add data 
         else{
-		extractedBytes.add(current);
-	    }
+        extractedBytes.add(current);
+        }
 
-	}
+    }
 
-	// If there is no stop tag, then the frame is incomplete.
-	if (!stopTagFound) {
-	    return null;
-	}
+    // If there is no stop tag, then the frame is incomplete.
+    if (!stopTagFound) {
+        return null;
+    }
 
-	if (debug) {
-	    System.out.println("ParityDataLinkLayer.processFrame(): Got whole frame!");
-	}
+    if (debug) {
+        System.out.println("ParityDataLinkLayer.processFrame(): Got whole frame!");
+    }
 
 
     // the first byte inside the frame is the frame number
@@ -256,20 +256,20 @@ public class PARDataLinkLayer extends DataLinkLayer {
         }
         }
         
-	// The final byte inside the frame is the parity.  Compare it to a
-	// recalculation.
-	byte receivedParity   = extractedBytes.remove(extractedBytes.size() - 1);
-	byte calculatedParity = calculateParity(extractedBytes);
-	if (receivedParity != calculatedParity) {
-	    System.out.printf("ParityDataLinkLayer.processFrame():\tDamaged frame\n");
-	    return null;
-	}
+    // The final byte inside the frame is the parity.  Compare it to a
+    // recalculation.
+    byte receivedParity   = extractedBytes.remove(extractedBytes.size() - 1);
+    byte calculatedParity = calculateParity(extractedBytes);
+    if (receivedParity != calculatedParity) {
+        System.out.printf("ParityDataLinkLayer.processFrame():\tDamaged frame\n");
+        return null;
+    }
 
     /* if the received frame is not an acknowledgment, we know that the current host is a receiver */
     if (extractedBytes.getFirst() != ackTag){
     receiver = true;
     }
-	return extractedBytes;
+    return extractedBytes;
 
     } // processFrame ()
     // =========================================================================
@@ -285,11 +285,11 @@ public class PARDataLinkLayer extends DataLinkLayer {
      * @param frame The frame of bytes received.
      */
     protected void finishFrameReceive (Queue<Byte> frame) {
-    	// will be responsible for sending an ACK when it receives a frame
-    	// also responsible for recognizing that what it has received is an ACK frame
-    	//and letting the DLL move into a state of "ready to send the next data frame".
+        // will be responsible for sending an ACK when it receives a frame
+        // also responsible for recognizing that what it has received is an ACK frame
+        //and letting the DLL move into a state of "ready to send the next data frame".
 
-    	// check frame number? and increment if correct then send ack?
+        // check frame number? and increment if correct then send ack?
 
         // COMPLETE ME WITH FLOW CONTROL
         
@@ -325,16 +325,16 @@ public class PARDataLinkLayer extends DataLinkLayer {
      * time has passed since some kind of response is expected.
      */
     protected void checkTimeout (long timeStart) {
-    	long time = System.currentTimeMillis();
-    	if (time - timeStart > 2000) {
-    		/* setting waiting = false will trigger resend - 
-		sendNextFrame will see that there is a frame in the 
-		buffer and it will resend it */
-    		waiting = false;
-    	}
-    	else {
-    		// keep going
-    	}
+        long time = System.currentTimeMillis();
+        if (time - timeStart > 2000) {
+            /* setting waiting = false will trigger resend - 
+        sendNextFrame will see that there is a frame in the 
+        buffer and it will resend it */
+            waiting = false;
+        }
+        else {
+            // keep going
+        }
 
     } // checkTimeout ()
     // =========================================================================
@@ -354,17 +354,17 @@ public class PARDataLinkLayer extends DataLinkLayer {
      */
     private byte calculateParity (Queue<Byte> data) {
 
-	int parity = 0;
-	for (byte b : data) {
-	    for (int j = 0; j < Byte.SIZE; j += 1) {
-		if (((1 << j) & b) != 0) {
-		    parity ^= 1;
-		}
-	    }
-	}
+    int parity = 0;
+    for (byte b : data) {
+        for (int j = 0; j < Byte.SIZE; j += 1) {
+        if (((1 << j) & b) != 0) {
+            parity ^= 1;
+        }
+        }
+    }
 
-	return (byte)parity;
-	
+    return (byte)parity;
+    
     } // calculateParity ()
     // =========================================================================
     
@@ -381,7 +381,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         for (int i = 0; i < index; i += 1) {
             receiveBuffer.remove();
-	}
+    }
 
     } // cleanBufferUpTo ()
     // =========================================================================
@@ -414,10 +414,8 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
     protected Boolean receiver = false;
 
-    protected byte ackTag = (byte)'!';
-
     protected Queue<Byte> ackStatus = new LinkedList<Byte>();
-	
+    
     /* The frame number (sender and receiver each have own)*/
     protected int frameNumber = 0;
 
