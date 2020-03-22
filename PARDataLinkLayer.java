@@ -44,7 +44,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
 	framingData.add(startTag);
 
     	/* add frame number */
-    	framingData.add(frameNumber);
+    	framingData.add((byte)frameNumber);
 
 	// Add each byte of original data.
     	int index = 0;
@@ -225,8 +225,8 @@ public class PARDataLinkLayer extends DataLinkLayer {
     if (!receiver){
 
     // if correct frame was received, increment frame count
-    if (foundFrameNumber == frameNumberCounter){
-    frameNumberCounter += 1;
+    if (foundFrameNumber == (byte)frameNumber){
+    frameNumber += 1;
 
     //clear sent frame buffer
         while (sentFrameBuffer.peek() != null){
@@ -234,7 +234,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
         }
     } else{
     // if acknowledgment for wrong frame is received, resend 
-    if (foundFrameNumber != frameNumberCounter){
+    if (foundFrameNumber != (byte)frameNumber){
     return null;
     }
     }
@@ -244,15 +244,15 @@ public class PARDataLinkLayer extends DataLinkLayer {
     // CURRENT HOST IS RECEIVER
     else {
     
-    if (foundFrameNumber == frameNumberCounter){
-    frameNumberCounter += 1;
+    if (foundFrameNumber == (byte)frameNumber){
+    frameNumber += 1;
     } 
 
     /* if receiver's previous acknowledgement didn't go through, reset 
     frame count to align with most recently received frame <--- THIS PART IS SUS,
     IS THIS THE RIGHT WAY TO HANDLE?  */
-    if (foundFrameNumber < frameNumberCounter){
-    frameNumberCounter = foundFrameNumber;
+    if (foundFrameNumber < (byte)frameNumber){
+    //not sure what to do here
         }
         }
         
@@ -419,7 +419,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
     protected Queue<Byte> ackStatus = new LinkedList<Byte>();
 	
     /* The frame number (sender and receiver each have own)*/
-    protected byte frameNumber = 0;
+    protected int frameNumber = 0;
 
 
 // =============================================================================
