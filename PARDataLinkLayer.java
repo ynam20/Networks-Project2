@@ -60,13 +60,6 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         }
 
-        // if sender's first data byte is an ack tag, precede it with an escape tag
-        if (!receiver && index == 0 && currentByte == ackTag){
-        framingData.add(escapeTag);
-        }
-
-        index += 1;
-
         // Add the data byte itself.
         framingData.add(currentByte);
     }
@@ -92,8 +85,8 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         protected Queue<Byte> sendNextFrame () {
 
-        /* check if we are waiting for an acknowledgment */
-
+        sender = true; 
+        // check if we are waiting for an acknowledgment 
         if (!waiting){
 
         System.out.println(sentFrameBuffer);
@@ -224,13 +217,8 @@ public class PARDataLinkLayer extends DataLinkLayer {
     // the first byte inside the frame is the frame number
     byte foundFrameNumber = extractedBytes.remove(0);
 
-    /* if the received frame is not an acknowledgment, we know that the current host is a receiver */
-    if (extractedBytes.getFirst() != ackTag){
-    receiver = true;
-    }
-
     // CURRENT HOST IS SENDER
-    if (!receiver){
+    if (sender){
 
     // if correct frame was received, increment frame count
     if (foundFrameNumber == (byte)frameNumber){
@@ -265,10 +253,10 @@ public class PARDataLinkLayer extends DataLinkLayer {
     byte calculatedParity = calculateParity(extractedBytes);
 
     System.out.println("PROCESS FRAME:");
-    if (receiver){
-    System.out.println("Receiver");
+    if (sender){
+    System.out.println("sender");
     } else {
-    System.out.println("Sender");
+    System.out.println("");
     }
 
     System.out.println(extractedBytes);
@@ -312,7 +300,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         client.receive(deliverable);
         // if this host is a receiver, create and send ack frame to sender
-        if (receiver){
+        if (!sender){
 
         /* initialize ackStatus to contain ackTag */
         if (ackStatus.size() == 0){
@@ -322,11 +310,11 @@ public class PARDataLinkLayer extends DataLinkLayer {
         /* create frame incorporating ackTag, send it */
         Queue<Byte> ackFrame= new LinkedList<Byte>();
         ackFrame = createFrame(ackStatus);
-        if (receiver){
+
         System.out.println("ACK FRAME");
         System.out.println(ackFrame);
         System.out.println();
-        }
+        
 
         transmit(ackFrame);
         frameNumber += 1;
@@ -343,7 +331,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
      * time has passed since some kind of response is expected.
      */
     protected void checkTimeout () {
-        if (!receiver){
+        if (sender){
         long time = System.currentTimeMillis();
         if ((time - lastFrameTime) > 3000.0) {
             /* setting waiting = false will trigger resend - 
@@ -430,7 +418,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
     /* record time of last time frame was sent */
     protected long lastFrameTime = 0L;
 
-    protected Boolean receiver = false;
+    protected Boolean sender = false;
 
     protected Queue<Byte> ackStatus = new LinkedList<Byte>();
 
@@ -441,4 +429,3 @@ public class PARDataLinkLayer extends DataLinkLayer {
 // =============================================================================
 } // class PARDataLinkLayer
 // =============================================================================
-
