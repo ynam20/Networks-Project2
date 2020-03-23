@@ -94,21 +94,15 @@ public class PARDataLinkLayer extends DataLinkLayer {
 
         /* check if we are waiting for an acknowledgment */
 
-        if (damagedFrameError){
-            System.out.println("waiting status");
-            System.out.println(waiting);
-            System.out.println("host");
-            System.out.println(receiver);
-            System.out.println("buffer");
-            System.out.println(sentFrameBuffer);
-            }
         if (!waiting){
 
+        System.out.println(sentFrameBuffer);
         /* if no frame sent recently, send current frame as usual */
             if (sentFrameBuffer.size() == 0){
                 return super.sendNextFrame();
             }
             else {
+            transmit(sentFrameBuffer);
             return sentFrameBuffer;
             }
         }
@@ -278,10 +272,10 @@ public class PARDataLinkLayer extends DataLinkLayer {
     }
 
     System.out.println(extractedBytes);
+    System.out.println();
 
     if (receivedParity != calculatedParity) {
         System.out.printf("ParityDataLinkLayer.processFrame():\tDamaged frame\n");
-        damagedFrameError = true;
         return null;
         }
     
@@ -331,6 +325,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
         if (receiver){
         System.out.println("ACK FRAME");
         System.out.println(ackFrame);
+        System.out.println();
         }
 
         transmit(ackFrame);
@@ -350,8 +345,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
     protected void checkTimeout () {
         if (!receiver){
         long time = System.currentTimeMillis();
-        if ((time - lastFrameTime) > 1000.0) {
-        //System.out.println("TIMEOUT");
+        if ((time - lastFrameTime) > 3000.0) {
             /* setting waiting = false will trigger resend - 
         sendNextFrame will see that there is a frame in the 
         buffer and it will resend it */
@@ -361,18 +355,12 @@ public class PARDataLinkLayer extends DataLinkLayer {
             System.out.println("buffer:");
             System.out.println(sentFrameBuffer);*/
             waiting = false;
-
-            /*if (damagedFrameError){
-            System.out.println("buffer");
-            System.out.println(sentFrameBuffer);
-            }*/
         }
         else {
             // keep going
         }
-    }
     } // checkTimeout ()
-    // =========================================================================
+    }// =========================================================================
 
     // =========================================================================
     /**
@@ -445,8 +433,7 @@ public class PARDataLinkLayer extends DataLinkLayer {
     protected Boolean receiver = false;
 
     protected Queue<Byte> ackStatus = new LinkedList<Byte>();
-    
-    public static Boolean damagedFrameError = false;
+
     /* The frame number (sender and receiver each have own)*/
     protected int frameNumber = 0;
 
@@ -454,3 +441,4 @@ public class PARDataLinkLayer extends DataLinkLayer {
 // =============================================================================
 } // class PARDataLinkLayer
 // =============================================================================
+
