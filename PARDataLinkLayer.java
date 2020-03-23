@@ -1,325 +1,29 @@
 // =============================================================================
 // IMPORTS
 
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.Iterator;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.System;
 // =============================================================================
-
 
 
 // =============================================================================
 /**
- * @file   DataLinkLayer.java
+ * @file   PARDataLinkLayer.java
  * @author Scott F. Kaplan (sfkaplan@cs.amherst.edu)
- * @date   March 2020.
+ * @date   February 2020
  *
- * A data link layer accepts a string of bytes, divides it into frames, adds
- * some metadata, and sends the frame via its physical layer.  Upon receiving a
- * frame, the data link layer removes the metadata, potentially performs some
- * checks on the data, and delivers the data to its client network layer.
+ * A data link layer that uses start/stop tags and byte packing to frame the
+ * data, and that performs error management with a parity bit.  It employs no
+ * flow control; damaged frames are dropped.
  */
-public abstract class DataLinkLayer {
+public class PARDataLinkLayer extends DataLinkLayer {
 // =============================================================================
 
 
-
-    // =========================================================================
-    // PUBLIC METHODS
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * Create the requested data link layer type and return it.
-     *
-     * @param  type          The subclass of which to create an instance.
-     * @param  physicalLayer The physical layer by which to communicate.
-     * @param  host          The host for which this layer is communicating.
-     * @return The newly created data link layer.
-     * @throws RuntimeException if the given type is not a valid subclass, or if
-     *                          the given physical layer doesn't exist (is
-     *                          <code>null</code>).
-     */
-    public static DataLinkLayer create (String        type,
-					PhysicalLayer physicalLayer,
-					Host          host) {
-
-	if (physicalLayer == null) {
-	    throw new RuntimeException("Null physical layer");
-	}
-	
-	// Look up the class by name.
-	String className           = type + "DataLinkLayer";
-	Class  dataLinkLayerClass  = null;
-	try {
-	    dataLinkLayerClass = Class.forName(className);
-	} catch (ClassNotFoundException e) {
-	    throw new RuntimeException("Unknown data link layer subclass " +
-				       className);
-	}
-
-	// Make one of these objects, and then see if it really is a
-	// DataLinkLayer subclass.
-	Object o = null;
-	try {
-	    o = dataLinkLayerClass.newInstance();
-	} catch (InstantiationException e) {
-	    throw new RuntimeException("Could not instantiate " + className);
-	} catch (IllegalAccessException e) {
-	    throw new RuntimeException("Could not access " + className);
-	}
-	DataLinkLayer dataLinkLayer = null;
-	try {
-	    dataLinkLayer = (DataLinkLayer)o;
-	} catch (ClassCastException e) {
-	    throw new RuntimeException(className +
-				       " is not a subclass of DataLinkLayer");
-	}
-
-
-	// Register this new data link layer with the physical layer.
-	dataLinkLayer.physicalLayer = physicalLayer;
-	physicalLayer.register(dataLinkLayer);
-	dataLinkLayer.register(host);
-	
-	return dataLinkLayer;
-
-    } // create ()
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * Default constructor.  Set up the buffers for sending and receiving.
-     */
-    public DataLinkLayer () {
-
-	// Create incoming buffer space.
-	bitBuffer     = new LinkedList<Boolean>();
-	receiveBuffer = new LinkedList<Byte>();
-	sendBuffer    = new LinkedList<Byte>();
-        
-    } // DataLinkLayer ()
-    // =========================================================================
-    
-
-
-
-    // =========================================================================
-    /**
-     * Allow a host to register as the client of this data link layer.
-     *
-     * @param client The host client of this data link layer.
-     */
-    public void register (Host client) {
-
-	// Is there already a client registered?
-	if (this.client != null) {
-	    throw new RuntimeException("Attempt to double-register");
-	}
-
-	// Hold a pointer to the client.
-	this.client = client;
-
-    } // register ()
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * The event loop.  If there is buffered data to send, frame and transmit
-     * it; if bits are received, process and deliver them one frame at a time.
-     */
-    public void go () {
-
-        // Event loop.
-        doEventLoop = true;
-        while (doEventLoop) {
-
-            // If there is buffered data to send, then frame and send it.
-
-            if (sendBuffer.peek() != null) {
-                Queue<Byte> framedData = sendNextFrame();
-
-                
-                if (framedData != null) {
-  
-
-                    finishFrameSend(framedData); // keep track of framed data in case ack wasn't received
-                }
-            }
-
-            // If there are received buffered bits, process them.
-            receive();
-
-            // If there are received buffered bytes, try to process a frame.
-            if (receiveBuffer.peek() != null) {
-                Queue<Byte> receivedFrame = processFrame();
-                if (receivedFrame != null) {
-                    // 1) if frame received, give it to host 2) send ack
-                    // keep in mind this could be data or ack
-                    finishFrameReceive(receivedFrame);
-                }
-            }
-
-	    // Check whether a timeout action needs to be taken.
-	    checkTimeout();
-
-        } // Event loop
-
-    } // go ()
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * End the event loop.
-     */
-    public void stop () {
-
-        doEventLoop = false;
-
-    } // stop ()
-    // =========================================================================
-    
-
-
-    // =========================================================================
-    /**
-     * Send a sequence of bytes through the physical layer.  Expected to be
-     * called by the client.  Buffers the data; actual sending is triggered by
-     * the event loop.
-     *
-     * @param data The sequence of bytes to send.
-     * @see   go()
-     */
-    public void send (byte[] data) {
-
-	// Add each byte to the sending buffer.
-	for (int i = 0; data != null && i < data.length; i += 1) {
-	    sendBuffer.add(data[i]);
-	}
-	
-    }
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * Extract the next frame-worth of data from the sending buffer, frame it,
-     * and then send it.
-     *
-     * @return the frame of bytes transmitted.
-     */
-    protected Queue<Byte> sendNextFrame () {
-
-        if (sendBuffer.isEmpty()) {
-            return null;
-        }
-        
-	// Extract a frame-worth of data from the sending buffer.
-	int frameSize = ((sendBuffer.size() < MAX_FRAME_SIZE)
-			 ? sendBuffer.size()
-			 : MAX_FRAME_SIZE);
-	Queue<Byte> data = new LinkedList<Byte>();
-	for (int j = 0; j < frameSize; j += 1) {
-	    data.add(sendBuffer.remove());
-	}
-
-
-
-	// Create a frame from the data and transmit it.
-	Queue<Byte> framedData = createFrame(data);
-	transmit(framedData);
-
-    return framedData;
-
-    } // sendNextFrame ()
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * Transmit a sequence of bytes as bits.
-     *
-     * @param data The sequence of bytes to send.
-     */
-    protected void transmit (Queue<Byte> data) {
-
-	for (byte b : data) {
-
-	    // Transmit one bit at a time, most to least significant.
-	    for (int i = Byte.SIZE - 1; i >= 0; i -= 1) {
-
-		// Grab the current bit...
-		boolean bit = ((1 << i) & b) != 0;
-
-		// ...and send it.
-		physicalLayer.send(bit);
-
-	    }
-
-	}
-
-    } // transmit ()
-    // =========================================================================
-
-
-
-    // =========================================================================
-    /**
-     * Deliver a bit into this layer.  Expected to be called by the physical
-     * layer.  Accumulate bits into a buffer, and with each full byte received,
-     * accumulate those bits into a byte buffer.  Each byte added to the buffer
-     * is examined to determine whether a whole frame has been received, and if
-     * so, then processed.
-     *
-     * @param bit The value to receive, where <code>false</code> indicates a
-     *            <code>0</code>, and <code>true</code> indicates a
-     *            <code>1</code>.
-     */
-    public void receive () {
-
-        // Transfer any available bits in the physical layer into our buffer.
-        Boolean bit = null;
-        while ((bit = physicalLayer.retrieve()) != null) {
-            bitBuffer.add(bit);
-        }
-
-	// If there are whole bytes of bits buffered, then transfer them to the
-	// byte buffer.
-	while (bitBuffer.size() >= Byte.SIZE) {
-
-	    // Build up one byte from the bits...
-	    byte newByte = 0;
-	    for (int i = 0; i < Byte.SIZE; i += 1) {
-		bit = bitBuffer.remove();
-		newByte = (byte)((newByte << 1) | (bit ? 1 : 0));
-	    }
-
-	    // ...and add it to the byte buffer.
-	    receiveBuffer.add(newByte);
-	    if (debug) {
-		System.out.printf("DataLinkLayer.receive(): Got new byte = %c\n",
-				  newByte);
-	    }
-
-	}
-
-    } // receive ()
-    // =========================================================================
-
-
-
+ 
     // =========================================================================
     /**
      * Embed a raw sequence of bytes into a framed sequence.
@@ -327,36 +31,267 @@ public abstract class DataLinkLayer {
      * @param  data The raw sequence of bytes to be framed.
      * @return A complete frame.
      */
-    abstract protected Queue<Byte> createFrame (Queue<Byte> data);
-    // =========================================================================
+    
+    protected Queue<Byte> createFrame (Queue<Byte> data) {
 
+        // ***THINGS TO ADD*** 1) frame number 2) whether frame is ack
 
+    // Calculate the parity.
+    byte parity = calculateParity(data);
+    
+    // Begin with the start tag
+    Queue<Byte> framingData = new LinkedList<Byte>();
+    framingData.add(startTag);
 
+        /* add frame number */
+        framingData.add((byte)frameNumber);
+
+    // Add each byte of original data.
+        int index = 0;
+        for (byte currentByte : data) {
+
+        // If the current data byte is itself a metadata tag, then precede
+        // it with an escape tag.
+        if ((currentByte == startTag) ||
+        (currentByte == stopTag) ||
+        (currentByte == escapeTag)) {
+
+        framingData.add(escapeTag);
+
+        }
+
+        // if sender's first data byte is an ack tag, precede it with an escape tag
+        if (!receiver && index == 0 && currentByte == ackTag){
+        framingData.add(escapeTag);
+        }
+
+        index += 1;
+
+        // Add the data byte itself.
+        framingData.add(currentByte);
+    }
+
+    // Add the parity byte.
+    framingData.add(parity);
+    
+    // End with a stop tag.
+    framingData.add(stopTag);
+
+    return framingData;
+    
+        } // createFrame ()
+        // =========================================================================
+
+    
+    
     // =========================================================================
     /**
-     * Determine whether the byte buffer contains a complete frame.  If so,
-     * extract its contents, removing all metadata and (if applicable) checking
-     * its correctness, then returning (if possible) the contained data.
-     *
-     * @return if possible, the extracted data from the frame; <code>null</code>
-     *         otherwise.
+     * After sending a frame, set GLOBAL waiting variable to true.
+     * Return null whenever the host is waiting for an acknowledgment. 
      */
-    abstract protected Queue<Byte> processFrame ();
+
+        protected Queue<Byte> sendNextFrame () {
+
+        /* check if we are waiting for an acknowledgment */
+
+        if (damagedFrameError){
+            System.out.println("waiting status");
+            System.out.println(waiting);
+            System.out.println("host");
+            System.out.println(receiver);
+            System.out.println("buffer");
+            System.out.println(sentFrameBuffer);
+            }
+        if (!waiting){
+
+        /* if no frame sent recently, send current frame as usual */
+            if (sentFrameBuffer.size() == 0){
+                return super.sendNextFrame();
+            }
+            else {
+            return sentFrameBuffer;
+            }
+        }
+        else {
+           return null;
+        }
+    } // sendNextFrame ()
     // =========================================================================
-
-
-
-    // =========================================================================
+    
+    
+    
+    
+     // =========================================================================
     /**
      * After sending a frame, do any bookkeeping (e.g., buffer the frame in case
      * a resend is required).
      *
      * @param frame The framed data that was transmitted.
      */ 
-    abstract protected void finishFrameSend (Queue<Byte> frame);
-    // =========================================================================
-    // record when frame was sent using currentTimeMillis
+    protected void finishFrameSend (Queue<Byte> frame) {
 
+        /* record the time frame was sent */
+        lastFrameTime = System.currentTimeMillis();
+
+        /* buffer the frame's contents in case resend is needed */
+        sentFrameBuffer = frame;
+
+        waiting = true;
+
+        // COMPLETE ME WITH FLOW CONTROL
+    } // finishFrameSend ()
+    // =========================================================================
+
+    
+    
+  // =========================================================================
+    /**
+     * Determine whether the received, buffered data constitutes a complete
+     * frame.  If so, then remove the framing metadata and return the original
+     * data.  Note that any data preceding an escaped start tag is assumed to be
+     * part of a damaged frame, and is thus discarded.
+     *
+     * @return If the buffer contains a complete frame, the extracted, original
+     * data; <code>null</code> otherwise.
+     */
+
+    protected Queue<Byte> processFrame () {
+
+    // Search for a start tag.  Discard anything prior to it.
+    boolean        startTagFound = false;
+    Iterator<Byte>             i = receiveBuffer.iterator();
+    while (!startTagFound && i.hasNext()) {
+        byte current = i.next();
+        if (current != startTag) {
+        i.remove();
+        } else {
+        startTagFound = true;
+        }
+    }
+
+    // If there is no start tag, then there is no frame.
+    if (!startTagFound) {
+        return null;
+    }
+    
+    // Try to extract data while waiting for an unescaped stop tag.
+        int                       index = 1;
+    LinkedList<Byte> extractedBytes = new LinkedList<Byte>();
+    boolean            stopTagFound = false;
+    startTagFound = false;
+    while (!stopTagFound && i.hasNext()) {
+
+        // Grab the next byte.  If it is...
+        //   (a) An escape tag: Skip over it and grab what follows as
+        //                      literal data.
+        //   (b) A stop tag:    Remove all processed bytes from the buffer and
+        //                      end extraction.
+        //   (c) A start tag:   All that precedes is damaged, so remove it
+        //                      from the buffer and restart extraction.
+        //   (d) Otherwise:     Take it as literal data.
+        byte current = i.next();
+            index += 1;
+        if (current == escapeTag) {
+        if (i.hasNext()) {
+            current = i.next();
+                    index += 1;
+            extractedBytes.add(current);
+        } else {
+            // An escape was the last byte available, so this is not a
+            // complete frame.
+            return null;
+        }
+        } else if (current == stopTag) {
+        cleanBufferUpTo(index);
+        stopTagFound = true;
+        } else if (current == startTag) {
+        cleanBufferUpTo(index - 1);
+                index = 1;
+                startTagFound = true;
+        extractedBytes = new LinkedList<Byte>();
+        }
+        //add data 
+        else{
+        extractedBytes.add(current);
+        }
+
+    }
+
+    // If there is no stop tag, then the frame is incomplete.
+    if (!stopTagFound) {
+        return null;
+    }
+
+    if (debug) {
+        System.out.println("ParityDataLinkLayer.processFrame(): Got whole frame!");
+    }
+
+
+    // the first byte inside the frame is the frame number
+    byte foundFrameNumber = extractedBytes.remove(0);
+
+    /* if the received frame is not an acknowledgment, we know that the current host is a receiver */
+    if (extractedBytes.getFirst() != ackTag){
+    receiver = true;
+    }
+
+    // CURRENT HOST IS SENDER
+    if (!receiver){
+
+    // if correct frame was received, increment frame count
+    if (foundFrameNumber == (byte)frameNumber){
+    frameNumber += 1;
+    waiting = false;
+
+    //clear sent frame buffer
+        while (sentFrameBuffer.peek() != null){
+        sentFrameBuffer.remove();
+        }
+    } else{
+    // if acknowledgment for wrong frame is received, resend 
+    if (foundFrameNumber != (byte)frameNumber){
+    System.out.println("WRONG FRAME NUMBER RECEIVED");
+    waiting = false;
+    return null;
+    }
+    }
+    }
+
+    // CURRENT HOST IS RECEIVER
+    else {
+        if (foundFrameNumber < (byte)frameNumber){
+        frameNumber = (int) foundFrameNumber;
+        }
+    }   
+    
+        
+    // The final byte inside the frame is the parity.  Compare it to a
+    // recalculation.
+    byte receivedParity   = extractedBytes.remove(extractedBytes.size() - 1);
+    byte calculatedParity = calculateParity(extractedBytes);
+
+    System.out.println("PROCESS FRAME:");
+    if (receiver){
+    System.out.println("Receiver");
+    } else {
+    System.out.println("Sender");
+    }
+
+    System.out.println(extractedBytes);
+
+    if (receivedParity != calculatedParity) {
+        System.out.printf("ParityDataLinkLayer.processFrame():\tDamaged frame\n");
+        damagedFrameError = true;
+        return null;
+        }
+    
+
+    return extractedBytes;
+
+    } // processFrame ()
+    // =========================================================================
+
+    
 
     // =========================================================================
     /**
@@ -366,7 +301,42 @@ public abstract class DataLinkLayer {
      *
      * @param frame The frame of bytes received.
      */
-    abstract protected void finishFrameReceive (Queue<Byte> frame);
+    protected void finishFrameReceive (Queue<Byte> frame) {
+        // will be responsible for sending an ACK when it receives a frame
+        // also responsible for recognizing that what it has received is an ACK frame
+        //and letting the DLL move into a state of "ready to send the next data frame".
+
+        // check frame number? and increment if correct then send ack?
+
+        // COMPLETE ME WITH FLOW CONTROL
+        
+        // Deliver frame to the client.
+        byte[] deliverable = new byte[frame.size()];
+        for (int i = 0; i < deliverable.length; i += 1) {
+            deliverable[i] = frame.remove();
+        }
+
+        client.receive(deliverable);
+        // if this host is a receiver, create and send ack frame to sender
+        if (receiver){
+
+        /* initialize ackStatus to contain ackTag */
+        if (ackStatus.size() == 0){
+        ackStatus.add(ackTag);
+        }
+
+        /* create frame incorporating ackTag, send it */
+        Queue<Byte> ackFrame= new LinkedList<Byte>();
+        ackFrame = createFrame(ackStatus);
+        if (receiver){
+        System.out.println("ACK FRAME");
+        System.out.println(ackFrame);
+        }
+
+        transmit(ackFrame);
+        frameNumber += 1;
+        }
+    } // finishFrameReceive ()
     // =========================================================================
 
 
@@ -377,47 +347,110 @@ public abstract class DataLinkLayer {
      * is called regularly in the event loop, and should check whether too much
      * time has passed since some kind of response is expected.
      */
-    abstract protected void checkTimeout ();
-    // =========================================================================
-    // reference currentTimeMillis, check it against sent frame time, t/o if too much time passed
+    protected void checkTimeout () {
+        if (!receiver){
+        long time = System.currentTimeMillis();
+        if ((time - lastFrameTime) > 1000.0) {
+        //System.out.println("TIMEOUT");
+            /* setting waiting = false will trigger resend - 
+        sendNextFrame will see that there is a frame in the 
+        buffer and it will resend it */
+            
+            /*System.out.println("Sender: " + receiver);
+            System.out.println("TIME OUT TRIGGERED");
+            System.out.println("buffer:");
+            System.out.println(sentFrameBuffer);*/
+            waiting = false;
 
-
-    // =========================================================================
-    // INSTANCE DATA MEMBERS
-
-    /** The physical layer used by this layer. */
-    protected PhysicalLayer  physicalLayer;
-
-    /** The host that is using this layer. */
-    protected Host           client;
-
-    /** The buffer of bits recently received, building up the current byte. */
-    protected Queue<Boolean> bitBuffer;
-
-    /** The buffer of bytes recently received, building up the current frame. */
-    protected Queue<Byte>    receiveBuffer;
-
-    /** The buffer of data yet to be sent. */
-    protected Queue<Byte>    sendBuffer;
-
-    /** Whether to continue the event loop. */
-    private   boolean        doEventLoop;
-    // =========================================================================
-
-
-
-    // =========================================================================
-    // CLASS DATA MEMBERS
-
-    /** The maximum number of original data bytes that a frame may contain. */
-    public static final int     MAX_FRAME_SIZE   = 8;
-
-    /** Whether to emit debugging information. */
-    public static final boolean debug            = false;
+            /*if (damagedFrameError){
+            System.out.println("buffer");
+            System.out.println(sentFrameBuffer);
+            }*/
+        }
+        else {
+            // keep going
+        }
+    }
+    } // checkTimeout ()
     // =========================================================================
 
+    // =========================================================================
+    /**
+     * For a sequence of bytes, determine its parity.
+     *
+     * @param data The sequence of bytes over which to calculate.
+     * @return <code>1</code> if the parity is odd; <code>0</code> if the parity
+     *         is even.
+     */
+    private byte calculateParity (Queue<Byte> data) {
 
+    int parity = 0;
+    for (byte b : data) {
+        for (int j = 0; j < Byte.SIZE; j += 1) {
+        if (((1 << j) & b) != 0) {
+            parity ^= 1;
+        }
+        }
+    }
+
+    return (byte)parity;
     
+    } // calculateParity ()
+    // =========================================================================
+    
+
+
+    // =========================================================================
+    /**
+     * Remove a leading number of elements from the receive buffer.
+     *
+     * @param index The index of the position up to which the bytes are to be
+     *              removed.
+     */
+    private void cleanBufferUpTo (int index) {
+
+        for (int i = 0; i < index; i += 1) {
+            receiveBuffer.remove();
+    }
+
+    } // cleanBufferUpTo ()
+    // =========================================================================
+
+
+
+    // =========================================================================
+    // DATA MEMBERS
+
+    /** The start tag. */
+    private final byte startTag  = (byte)'{';
+
+    /** The stop tag. */
+    private final byte stopTag   = (byte)'}';
+
+    /** The escape tag. */
+    private final byte escapeTag = (byte)'\\';
+    // =========================================================================
+
+    private final byte ackTag = (byte)'!';
+
+    /* check if sender needs to wait before re-sending frame */
+    protected boolean waiting = false;
+
+    /* hold a copy of frame in case of t/o, or ack isn't received */
+    protected Queue<Byte> sentFrameBuffer = new LinkedList<Byte>();
+
+    /* record time of last time frame was sent */
+    protected long lastFrameTime = 0L;
+
+    protected Boolean receiver = false;
+
+    protected Queue<Byte> ackStatus = new LinkedList<Byte>();
+    
+    public static Boolean damagedFrameError = false;
+    /* The frame number (sender and receiver each have own)*/
+    protected int frameNumber = 0;
+
+
 // =============================================================================
-} // class DataLinkLayer
+} // class PARDataLinkLayer
 // =============================================================================
